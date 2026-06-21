@@ -186,22 +186,7 @@ All components log through `ILogger<T>` (standard `Microsoft.Extensions.Logging`
 
 ---
 
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| Server not appearing in PostQode | Check the path in `args` is correct and the `publish` folder exists |
-| `TFS_COLLECTION_URL is not set` error | You're not in mock mode — either set the URL or add `TFS_AUTH_MODE=mock` |
-| `Unrecognised TFS_AUTH_MODE value` error | Check spelling — valid values are `ntlm`, `basic`, `pat`, `mock` |
-| `Project 'X' not found` in mock | Use `FabrikamFiber` or `AdventureWorks` (case-insensitive) |
-| Tool call times out | Increase Network Timeout in PostQode's MCP server config panel |
-| `Permission Errors` in real TFS mode | Verify `TFS_USERNAME` / `TFS_PASSWORD` or check NTLM domain membership |
-| `dotnet test` fails to restore | Confirm SDK `10.0.100`+ is installed (see `global.json`) |
-| `dotnet test` fails with `CS0234: ... namespace 'Microsoft.TeamFoundation'` | The test project wasn't forwarding `MockOnly=true` to the main project's build — fixed via `<AdditionalProperties>MockOnly=true</AdditionalProperties>` on the `ProjectReference` in `TfsMcpServer.Tests.csproj`. If you still see this, confirm that line is present and re-run `dotnet restore` to refresh `obj/`. |
-
----
-
-## Architecture — How This Works
+## Architecture - How This Works
 
 Think of the server as **4 layers**. A tool call from PostQode flows down through them, and the response flows back up.
 
