@@ -1,10 +1,8 @@
 # TFS 2013 MCP Server (C# / .NET 10)
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that exposes
-**TFS 2013 Work Item** operations as tools for AI clients like PostQode.
+An [MCP](https://modelcontextprotocol.io) server that exposes **TFS 2013 Work Item** operations as tools for AI clients like [PostQode](https://www.postqode.ai).
 
-Includes a **full in-memory mock** so you can test all tools end-to-end without any TFS instance,
-plus an **xUnit test suite** covering the mock store, config parsing, and response shaping.
+Includes a **full in-memory mock** so you can test all tools end-to-end without any TFS instance, plus an **xUnit test suite** covering the mock store, config parsing, and response shaping.
 
 ---
 
@@ -12,20 +10,11 @@ plus an **xUnit test suite** covering the mock store, config parsing, and respon
 
 ```
 TfsMcpServer.sln
-├── src/TfsMcpServer/          — the MCP server (entry point + all source)
-├── tests/TfsMcpServer.Tests/  — xUnit test suite
-├── global.json                — pinned .NET SDK version
-└── .editorconfig               — formatting & naming conventions
+├── src/TfsMcpServer/          - the MCP server (entry point + all source)
+├── tests/TfsMcpServer.Tests/  - xUnit test suite
+├── global.json                - pinned .NET SDK version
+└── .editorconfig              - formatting & naming conventions
 ```
-
-See [Architecture](#architecture--how-this-works) below for what each file inside `src/TfsMcpServer/`
-does and how they fit together — that's documented separately so this structural overview doesn't
-go stale every time a file is added.
-
-**Design notes:**
-- `WorkItemTools.cs` only orchestrates (call the store → shape via `WorkItemViewModels` → serialize). It doesn't know how to format JSON responses itself.
-- `ServiceLocator` is a deliberate, documented exception to constructor injection — the MCP SDK's `[McpServerTool]` attribute requires static methods, which rules out normal DI. Everything else in the project uses constructor injection (`ILogger<T>`, `TfsConnectionFactory`, etc.).
-- `AuthMode` is a proper enum, not a raw string — `TfsConfig.ParseAuthMode()` fails fast with a clear error message if `TFS_AUTH_MODE` is misspelled, instead of silently falling through at TFS-connection time.
 
 ---
 
@@ -43,14 +32,13 @@ go stale every time a file is added.
 
 ## Prerequisites
 
-| Requirement       | Notes                                                          |
-|-------------------|------------------------------------------------------------------|
+| Requirement       | Notes                                                           |
+|-------------------|-----------------------------------------------------------------|
 | **.NET 10 SDK**   | https://dotnet.microsoft.com/download/dotnet/10                 |
-| **PostQode**      | VS Code extension — https://postqode.ai                         |
-| **TFS assemblies**| Only needed for real TFS mode — installed via NuGet (see below) |
+| **PostQode**      | VS Code extension - https://postqode.ai                         |
+| **TFS assemblies**| Only needed for real TFS mode - installed via NuGet (see below) |
 
-`global.json` pins the SDK to `10.0.100`. If your installed SDK is a different patch version,
-either install `10.0.100`+ or relax `rollForward` in `global.json`.
+`global.json` pins the SDK to `10.0.100`. If your installed SDK is a different patch version, either install `10.0.100`+ or relax `rollForward` in `global.json`.
 
 ---
 
@@ -61,17 +49,12 @@ cd TfsMcpServer
 dotnet test
 ```
 
-The test project always builds the main project in `MockOnly` mode, so tests run on **any OS** —
-no TFS assemblies, no Windows, no live TFS instance required. This is forwarded automatically via
-`<AdditionalProperties>MockOnly=true</AdditionalProperties>` on the `<ProjectReference>` inside
-`TfsMcpServer.Tests.csproj`. (A plain `<MockOnly>true</MockOnly>` property in the test project
-would *not* be enough — MSBuild properties don't cross a project reference on their own;
-`AdditionalProperties` is what actually passes the flag into the referenced project's build.)
+The test project always builds the main project in `MockOnly` mode, so tests run on **any OS** - no TFS assemblies, no Windows, no live TFS instance required. This is forwarded automatically via `<AdditionalProperties>MockOnly=true</AdditionalProperties>` on the `<ProjectReference>` inside `TfsMcpServer.Tests.csproj`.
 
-**Coverage:** ~40 tests across:
-- `MockWorkItemStore` — Query (WIQL filter parsing, ordering, paging), GetById, Create, Update, ListWorkItemTypes
-- `TfsConfig.ParseAuthMode` — case-insensitive parsing, defaulting, and the error path for typos
-- `WorkItemViewModels` — response shaping for each of the 5 tool outputs
+**Coverage:** across:
+- `MockWorkItemStore` - Query (WIQL filter parsing, ordering, paging), GetById, Create, Update, ListWorkItemTypes
+- `TfsConfig.ParseAuthMode` - case-insensitive parsing, defaulting, and the error path for typos
+- `WorkItemViewModels` - response shaping for each of the 5 tool outputs
 
 ---
 
@@ -79,12 +62,7 @@ would *not* be enough — MSBuild properties don't cross a project reference on 
 
 ### 1. Build options
 
-**Option A — run directly (easier during development):**
-
-No build step needed. PostQode launches and compiles the project on demand.
-Skip to step 2 and use the `dotnet run` config snippet.
-
-**Option B — publish first (faster cold start):**
+**Option B - publish first (faster cold start):**
 
 ```bash
 cd TfsMcpServer/src/TfsMcpServer
@@ -93,25 +71,9 @@ dotnet publish -c Release -p:MockOnly=true -o ../../publish
 
 ### 2. Register in PostQode
 
-Open PostQode → MCP Servers icon → Installed tab → Configure MCP Servers.
+Open PostQode -> MCP Servers icon -> Installed tab -> Configure MCP Servers.
 
-Add one of these entries to `postqode_mcp_settings.json`:
-
-**Option A — dotnet run (no prior build needed):**
-
-```json
-{
-  "mcpServers": {
-    "tfs2013": {
-      "command": "dotnet",
-      "args": ["run", "--project", "C:\\path\\to\\TfsMcpServer\\src\\TfsMcpServer\\TfsMcpServer.csproj", "-p:MockOnly=true"],
-      "env": {
-        "TFS_AUTH_MODE": "mock"
-      }
-    }
-  }
-}
-```
+Add the following entry to `postqode_mcp_settings.json`:
 
 **Option B — published output (instant start):**
 
@@ -133,7 +95,7 @@ Add one of these entries to `postqode_mcp_settings.json`:
 
 ### 3. Test in PostQode chat
 
-The mock is pre-seeded with 10 realistic work items across two projects.
+The mock is seeded with 10 work items across two projects.
 
 **Projects:** `FabrikamFiber` · `AdventureWorks`
 **Mock IDs:** 1–10
@@ -165,8 +127,7 @@ Try these prompts:
 | 9  | AdventureWorks | Product Backlog Item| Implement product search with filters          | New         | Eve Martinez   |
 | 10 | AdventureWorks | Task                | Set up CI pipeline in TFS Build                | Done        | Dave Lee       |
 
-The mock supports WIQL filtering by `[System.TeamProject]`, `[System.WorkItemType]`,
-`[System.State]` (= and <>), and `[System.AssignedTo]`, plus `ORDER BY [System.Id] ASC/DESC`.
+The mock supports WIQL filtering by `[System.TeamProject]`, `[System.WorkItemType]`,`[System.State]` (= and <>), and `[System.AssignedTo]`, plus `ORDER BY [System.Id] ASC/DESC`.
 
 ---
 
