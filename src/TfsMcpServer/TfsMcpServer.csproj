@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TfsMcpServer</AssemblyName>
+    <RootNamespace>TfsMcpServer</RootNamespace>
+    <!--
+      Set MockOnly=true on the command line to build without any TFS assemblies:
+        dotnet build -p:MockOnly=true
+      This lets you build and test on any OS without TFS client DLLs installed.
+    -->
+    <MockOnly Condition="'$(MockOnly)'==''">false</MockOnly>
+    <DefineConstants Condition="'$(MockOnly)'=='true'">$(DefineConstants);MOCK_ONLY</DefineConstants>
+    <!--
+      The TFS Extended Client NuGet package contains .NET Framework assemblies.
+      Targeting win-x64 tells the .NET 10 runtime to allow loading them via
+      Windows compatibility shims. TFS 2013 is Windows-only anyway.
+      Mock-only builds don't need this restriction.
+    -->
+    <RuntimeIdentifier Condition="'$(MockOnly)'!='true'">win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MCP Server SDK (stdio transport) -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
+    <!-- Required for Host.CreateApplicationBuilder() — not pulled in transitively by ModelContextProtocol -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+  <!--
+    TFS 2013 Client Object Model — pulled from NuGet automatically via dotnet restore.
+    No manual DLL copying required. Only included when MockOnly=false (the default).
+  -->
+  <ItemGroup Condition="'$(MockOnly)'!='true'">
+    <PackageReference Include="Microsoft.TeamFoundationServer.ExtendedClient" Version="15.112.1" />
+  </ItemGroup>
+
+  <!--
+    Exclude the real TFS implementation from a mock-only build
+    so there are no missing-reference compile errors.
+  -->
+  <ItemGroup Condition="'$(MockOnly)'=='true'">
+    <Compile Remove="src\TfsConnectionFactory.cs" />
+    <Compile Remove="src\TfsWorkItemStore.cs" />
+  </ItemGroup>
+
+</Project>
