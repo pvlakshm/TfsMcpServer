@@ -97,8 +97,8 @@ Add the following entry to `postqode_mcp_settings.json`:
 
 The mock is seeded with 10 work items across two projects.
 
-**Projects:** `FabrikamFiber` · `AdventureWorks`
-**Mock IDs:** 1–10
+**Projects:** `FabrikamFiber`, `AdventureWorks`
+**Mock IDs:** 1-10
 
 Try these prompts:
 
@@ -206,42 +206,43 @@ All components log through `ILogger<T>` (standard `Microsoft.Extensions.Logging`
 Think of the server as **4 layers**. A tool call from PostQode flows down through them, and the response flows back up.
 
 ```
-PostQode (the caller)
-        │  calls a tool
-        v
-+------------------------------------------------------------+
+                PostQode (the caller)
+                        |
+                        | calls a tool
+                        v
++-----------------------+------------------------------------+
 │ Layer 1 - WorkItemTools.cs  (the menu)                     │
 │ Each [McpServerTool] method: validate input -> call the    │
 │ store -> shape via a view model -> serialize. Nothing else.│
-+------------------------------------------------------------+
-        │
-        v
-+----------------------------------------------------------+
++-----------------------+------------------------------------+
+                        |
+                        v
++-----------------------+----------------------------------+
 │ Layer 2 - IWorkItemStore  (the contract)                 │
 │ Declares what operations exist: Query, GetById, Create,  │
 │ Update, ListWorkItemTypes. Says nothing about *how*.     │
-+----------------------------------------------------------+
++---------+------------------------------+-----------------+
           │                              │
           v                              v
-  +------------------------+   +-------------------------+
+  +-------+----------------+   +---------+---------------+
   │ MockWorkItemStore      │   │ TfsWorkItemStore        │
   │ Layer 3a - in-memory,  │   │ Layer 3b - real TFS,    │
   │ for testing            │   │ via the TFS client SDK  │
-  +------------------------+   +-------------------------+
+  +-------+----------------+   +---------+---------------+
           │                              │
-          +------------------------------+
+          +-------------+----------------+
                         |
                         v
                 both return the same
                 WorkItemData shape
                         │
                         v
-+---------------------------------------------------------+
++-----------------------+---------------------------------+
 │ WorkItemViewModels  (the formatter)                     │
 │ Shapes WorkItemData into the JSON response - a brief    │
 │ summary for lists, a full dump for single lookups, a    │
 │ success message for creates/updates.                    │
-+---------------------------------------------------------+
++-----------------------+---------------------------------+
                         │
                         v
           JSON string returned to PostQode
