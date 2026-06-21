@@ -203,96 +203,80 @@ All components log through `ILogger<T>` (standard `Microsoft.Extensions.Logging`
 
 ## Architecture — How This Works
 
-Think of the server as **4 layers**, like a sandwich. A tool call from PostQode flows down
-through them, and the response flows back up.
+Think of the server as **4 layers**. A tool call from PostQode flows down through them, and the response flows back up.
 
 ```
 PostQode (the caller)
         │  calls a tool
-        ▼
-┌─────────────────────────────────────────────────────────┐
-│ Layer 1 — WorkItemTools.cs  (the menu)                   │
-│ Each [McpServerTool] method: validate input → call the   │
-│ store → shape via a view model → serialize. Nothing else.│
-└─────────────────────────────────────────────────────────┘
+        v
++------------------------------------------------------------+
+│ Layer 1 - WorkItemTools.cs  (the menu)                     │
+│ Each [McpServerTool] method: validate input -> call the    │
+│ store -> shape via a view model -> serialize. Nothing else.│
++------------------------------------------------------------+
         │
-        ▼
-┌─────────────────────────────────────────────────────────┐
-│ Layer 2 — IWorkItemStore  (the contract)                 │
+        v
++----------------------------------------------------------+
+│ Layer 2 - IWorkItemStore  (the contract)                 │
 │ Declares what operations exist: Query, GetById, Create,  │
-│ Update, ListWorkItemTypes. Says nothing about *how*.      │
-└─────────────────────────────────────────────────────────┘
-        │                              │
-        ▼                              ▼
-┌──────────────────────┐   ┌──────────────────────────┐
-│ MockWorkItemStore     │   │ TfsWorkItemStore          │
-│ Layer 3a — in-memory, │   │ Layer 3b — real TFS, via  │
-│ for testing           │   │ the TFS client SDK        │
-└──────────────────────┘   └──────────────────────────┘
-        │                              │
-        └──────────────┬───────────────┘
-                        ▼
-              both return the same
-              WorkItemData shape
+│ Update, ListWorkItemTypes. Says nothing about *how*.     │
++----------------------------------------------------------+
+          │                              │
+          v                              v
+  +------------------------+   +-------------------------+
+  │ MockWorkItemStore      │   │ TfsWorkItemStore        │
+  │ Layer 3a - in-memory,  │   │ Layer 3b - real TFS,    │
+  │ for testing            │   │ via the TFS client SDK  │
+  +------------------------+   +-------------------------+
+          │                              │
+          +------------------------------+
+                        |
+                        v
+                both return the same
+                WorkItemData shape
                         │
-                        ▼
-┌─────────────────────────────────────────────────────────┐
-│ WorkItemViewModels  (the formatter)                       │
-│ Shapes WorkItemData into the JSON response — a brief      │
-│ summary for lists, a full dump for single lookups, a      │
-│ success message for creates/updates.                      │
-└─────────────────────────────────────────────────────────┘
+                        v
++---------------------------------------------------------+
+│ WorkItemViewModels  (the formatter)                     │
+│ Shapes WorkItemData into the JSON response - a brief    │
+│ summary for lists, a full dump for single lookups, a    │
+│ success message for creates/updates.                    │
++---------------------------------------------------------+
                         │
-                        ▼
-              JSON string returned to PostQode
+                        v
+          JSON string returned to PostQode
 ```
 
-### The 4 layers, in plain language
+### The 4 layers
 
-**Layer 1 — `WorkItemTools.cs` (the menu)**
-This is what PostQode sees. Each method tagged `[McpServerTool]` is one callable action —
-`QueryWorkItems`, `CreateWorkItem`, etc. These methods are deliberately dumb: take input → call
-the store → hand the result to a view model → return JSON. No business logic lives here.
+**Layer 1 - `WorkItemTools.cs` (the menu)**
+This is what PostQode sees. Each method tagged `[McpServerTool]` is one callable action -`QueryWorkItems`, `CreateWorkItem`, etc. These methods are deliberately dumb: take input -> call the store -> hand the result to a view model -> return JSON. No business logic lives here.
 
-**Layer 2 — `IWorkItemStore` (the contract)**
-This interface says "any work item store must support Query, GetById, Create, Update,
-ListWorkItemTypes" — without saying *how*. It's the seam that lets mock and real TFS be
-swappable.
+**Layer 2 - `IWorkItemStore` (the contract)**
+This interface says "any work item store must support Query, GetById, Create, Update, ListWorkItemTypes" - without saying *how*. It's the seam that lets mock and real TFS be swappable.
 
-**Layer 3 — `MockWorkItemStore` / `TfsWorkItemStore` (the actual work)**
-Two different engines that both fulfill the `IWorkItemStore` contract. One fakes data in memory;
-the other talks to real TFS. `ServiceLocator` picks one at startup based on `TFS_AUTH_MODE`.
+**Layer 3 - `MockWorkItemStore` / `TfsWorkItemStore` (the actual work)**
+Two different engines that both fulfill the `IWorkItemStore` contract. One fakes data in memory; the other talks to real TFS. `ServiceLocator` picks one at startup based on `TFS_AUTH_MODE`.
 
 **Back up to `WorkItemViewModels` (the formatter)**
-Once you have a `WorkItemData` result, this decides what JSON shape goes back to PostQode — a
-brief summary for lists, a full dump for single lookups, a success message for creates.
+Once you have a `WorkItemData` result, this decides what JSON shape goes back to PostQode - a brief summary for lists, a full dump for single lookups, a success message for creates.
 
-### What is a "ViewModel"?
+### Why ViewModel?
 
-A ViewModel is **a translator between "the data we have" and "the shape someone else needs to
-see."** In this project: `WorkItemData` is the *full*, internal representation of a work item
-(every field). The JSON response is what PostQode actually receives. `WorkItemViewModels` sits
-between them and decides, for each tool, which fields matter and how they should be labeled.
+The ViewModel is **a translator between "the data we have" and "the shape someone else needs to see."** In this project: `WorkItemData` is the *full*, internal representation of a work item (every field). The JSON response is what PostQode actually receives. `WorkItemViewModels` sits between them and decides, for each tool, which fields matter and how they should be labeled.
 
 Different tools need different views of the same data:
 
-| Tool                | What it needs to show                                        |
+| Tool                 | What it needs to show                                         |
 |----------------------|---------------------------------------------------------------|
-| `QueryWorkItems`     | Just enough to scan a list — id, title, state, assignee       |
-| `GetWorkItem`        | Everything — full description, history, all custom fields     |
-| `CreateWorkItem`     | Not the item at all — just a success message + new ID         |
+| `QueryWorkItems`     | Just enough to scan a list - id, title, state, assignee       |
+| `GetWorkItem`        | Everything - full description, history, all custom fields     |
+| `CreateWorkItem`     | Not the item at all - just a success message + new ID         |
 | `UpdateWorkItem`     | Success message + which fields changed                        |
 
-If every tool just serialized `WorkItemData` directly, every response would dump all 13+ fields
-even when only 5 are needed — bloating the response and burying the signal. By centralizing
-shaping in `WorkItemViewModels.cs`, changing what "full detail" means is a one-place edit that
-every tool using `Full()` picks up automatically.
+If every tool just serialized `WorkItemData` directly, every response would dump all 13+ fields even when only 5 are needed - bloating the response and burying the signal. By centralizing shaping in `WorkItemViewModels.cs`, changing what "full detail" means is a one-place edit that every tool using `Full()` picks up automatically.
 
-The name borrows from the MVVM pattern (Model–View–ViewModel): `WorkItemData` is the **Model**
-(the raw truth), the JSON payload is the **View** (what the consumer sees), and
-`WorkItemViewModels` is the **ViewModel** (the adapter shaping one into the other).
-
-### Adding a new tool — concrete walkthrough
+### Adding a new tool - concrete walkthrough
 
 Say you want to add **`DeleteWorkItem`**. Here's every file you'd touch:
 
@@ -351,30 +335,18 @@ public static string DeleteWorkItem(
 **5. Write a test in `tests/`**
 A new `MockWorkItemStoreDeleteTests.cs` following the same pattern as the existing ones.
 
-That's it — **5 small, mechanical edits, no architecture decisions.** `Program.cs`,
-`ServiceLocator.cs`, and the `.csproj` never need to change for a new *work item* tool, because
-the wiring is already generic.
-
-**The one rule that makes this easy:** every tool follows the same shape —
-`[Description] → Store.Method() → ViewModel.Shape() → Serialize`. If you ever find yourself
-writing business logic *inside* `WorkItemTools.cs` — a loop, an `if` deciding how to format a
-date, direct TFS API calls — that's the signal you've broken the pattern. Push it down into the
-store (if it's "how do we get the data") or the view model (if it's "how do we present the
-data").
+That's it - **5 edits, no architecture decisions.** `Program.cs`, `ServiceLocator.cs`, and the `.csproj` never need to change for a new *work item* tool, because the wiring is already generic.
 
 ### Adding a whole new TFS area (not just a new operation)
 
-If you're adding tools for a different TFS area entirely — Builds, Source Control, Test Plans —
-mirror the same 4 layers with new names:
+If you're adding tools for a different TFS area entirely - Builds, Source Control, Test Plans - mirror the same 4 layers with new names:
 
 ```
 IBuildStore.cs         (the contract)
-MockBuildStore.cs       (fake implementation)
-TfsBuildStore.cs        (real implementation)
-BuildViewModels.cs       (response shaping)
-BuildTools.cs           (the [McpServerTool] methods)
+MockBuildStore.cs      (fake implementation)
+TfsBuildStore.cs       (real implementation)
+BuildViewModels.cs     (response shaping)
+BuildTools.cs          (the [McpServerTool] methods)
 ```
 
-Then one line in `ServiceLocator.cs` to wire up which `IBuildStore` to use — same pattern as
-`WorkItemStore`, just a sibling property. `Program.cs` doesn't need to change at all, because
-`WithToolsFromAssembly()` auto-discovers any class with `[McpServerToolType]`.
+Then one line in `ServiceLocator.cs` to wire up which `IBuildStore` to use — same pattern as `WorkItemStore`, just a sibling property. `Program.cs` doesn't need to change at all, because `WithToolsFromAssembly()` auto-discovers any class with `[McpServerToolType]`.
