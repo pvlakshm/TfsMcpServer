@@ -12,37 +12,15 @@ plus an **xUnit test suite** covering the mock store, config parsing, and respon
 
 ```
 TfsMcpServer.sln
-├── global.json                          # Pins the .NET SDK version
-├── .editorconfig                        # Formatting & naming conventions
-├── README.md
-├── src/
-│   └── TfsMcpServer/
-│       ├── Program.cs                   # Entry point — config, DI, MCP host
-│       ├── TfsMcpServer.csproj          # Project file & NuGet package references
-│       └── src/
-│           ├── AuthMode.cs              # Ntlm | Basic | Pat | Mock enum
-│           ├── IWorkItemStore.cs        # IWorkItemStore interface
-│           ├── WorkItemData.cs          # Read model returned by all store operations
-│           ├── CreateWorkItemRequest.cs # Write model for creating work items
-│           ├── MockWorkItemStore.cs     # In-memory implementation (testing)
-│           ├── TfsWorkItemStore.cs      # Real TFS implementation (production)
-│           ├── TfsConnectionFactory.cs  # TFS auth & connection management
-│           ├── TfsConfig.cs             # Configuration model + AuthMode parser
-│           ├── ServiceLocator.cs        # Wires up mock or real store at startup
-│           ├── JsonOptions.cs           # Shared JSON serialiser settings
-│           ├── WorkItemViewModels.cs    # Response shaping (separate from tool logic)
-│           └── WorkItemTools.cs         # The 5 MCP tool definitions (thin orchestration)
-└── tests/
-    └── TfsMcpServer.Tests/
-        ├── TfsMcpServer.Tests.csproj
-        ├── MockWorkItemStoreQueryTests.cs
-        ├── MockWorkItemStoreGetByIdTests.cs
-        ├── MockWorkItemStoreCreateTests.cs
-        ├── MockWorkItemStoreUpdateTests.cs
-        ├── MockWorkItemStoreListWorkItemTypesTests.cs
-        ├── TfsConfigParseAuthModeTests.cs
-        └── WorkItemViewModelsTests.cs
+├── src/TfsMcpServer/          — the MCP server (entry point + all source)
+├── tests/TfsMcpServer.Tests/  — xUnit test suite
+├── global.json                — pinned .NET SDK version
+└── .editorconfig               — formatting & naming conventions
 ```
+
+See [Architecture](#architecture--how-this-works) below for what each file inside `src/TfsMcpServer/`
+does and how they fit together — that's documented separately so this structural overview doesn't
+go stale every time a file is added.
 
 **Design notes:**
 - `WorkItemTools.cs` only orchestrates (call the store → shape via `WorkItemViewModels` → serialize). It doesn't know how to format JSON responses itself.
@@ -258,14 +236,180 @@ All components log through `ILogger<T>` (standard `Microsoft.Extensions.Logging`
 
 ---
 
-## Extending the Server
+## Architecture — How This Works
 
-To add tools for another TFS area (Builds, Source Control, Test Plans):
+Think of the server as **4 layers**, like a sandwich. A tool call from PostQode flows down
+through them, and the response flows back up.
 
-1. Add an interface (e.g. `IBuildStore`) following the `IWorkItemStore` pattern, plus mock/real implementations.
-2. Add a new tool class (e.g. `BuildTools.cs`) with `[McpServerToolType]` + `[McpServerTool]` methods that only orchestrate — push response shaping into a sibling `BuildViewModels.cs`.
-3. Wire the new store into `ServiceLocator.Initialise()`.
-4. Add a test project folder mirroring the `MockWorkItemStore*Tests.cs` pattern.
+```
+PostQode (the caller)
+        │  calls a tool
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ Layer 1 — WorkItemTools.cs  (the menu)                   │
+│ Each [McpServerTool] method: validate input → call the   │
+│ store → shape via a view model → serialize. Nothing else.│
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ Layer 2 — IWorkItemStore  (the contract)                 │
+│ Declares what operations exist: Query, GetById, Create,  │
+│ Update, ListWorkItemTypes. Says nothing about *how*.      │
+└─────────────────────────────────────────────────────────┘
+        │                              │
+        ▼                              ▼
+┌──────────────────────┐   ┌──────────────────────────┐
+│ MockWorkItemStore     │   │ TfsWorkItemStore          │
+│ Layer 3a — in-memory, │   │ Layer 3b — real TFS, via  │
+│ for testing           │   │ the TFS client SDK        │
+└──────────────────────┘   └──────────────────────────┘
+        │                              │
+        └──────────────┬───────────────┘
+                        ▼
+              both return the same
+              WorkItemData shape
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────┐
+│ WorkItemViewModels  (the formatter)                       │
+│ Shapes WorkItemData into the JSON response — a brief      │
+│ summary for lists, a full dump for single lookups, a      │
+│ success message for creates/updates.                      │
+└─────────────────────────────────────────────────────────┘
+                        │
+                        ▼
+              JSON string returned to PostQode
+```
 
-`WithToolsFromAssembly()` in `Program.cs` auto-discovers all `[McpServerToolType]` classes, so no
-registration step is needed beyond writing the class.
+### The 4 layers, in plain language
+
+**Layer 1 — `WorkItemTools.cs` (the menu)**
+This is what PostQode sees. Each method tagged `[McpServerTool]` is one callable action —
+`QueryWorkItems`, `CreateWorkItem`, etc. These methods are deliberately dumb: take input → call
+the store → hand the result to a view model → return JSON. No business logic lives here.
+
+**Layer 2 — `IWorkItemStore` (the contract)**
+This interface says "any work item store must support Query, GetById, Create, Update,
+ListWorkItemTypes" — without saying *how*. It's the seam that lets mock and real TFS be
+swappable.
+
+**Layer 3 — `MockWorkItemStore` / `TfsWorkItemStore` (the actual work)**
+Two different engines that both fulfill the `IWorkItemStore` contract. One fakes data in memory;
+the other talks to real TFS. `ServiceLocator` picks one at startup based on `TFS_AUTH_MODE`.
+
+**Back up to `WorkItemViewModels` (the formatter)**
+Once you have a `WorkItemData` result, this decides what JSON shape goes back to PostQode — a
+brief summary for lists, a full dump for single lookups, a success message for creates.
+
+### What is a "ViewModel"?
+
+A ViewModel is **a translator between "the data we have" and "the shape someone else needs to
+see."** In this project: `WorkItemData` is the *full*, internal representation of a work item
+(every field). The JSON response is what PostQode actually receives. `WorkItemViewModels` sits
+between them and decides, for each tool, which fields matter and how they should be labeled.
+
+Different tools need different views of the same data:
+
+| Tool                | What it needs to show                                        |
+|----------------------|---------------------------------------------------------------|
+| `QueryWorkItems`     | Just enough to scan a list — id, title, state, assignee       |
+| `GetWorkItem`        | Everything — full description, history, all custom fields     |
+| `CreateWorkItem`     | Not the item at all — just a success message + new ID         |
+| `UpdateWorkItem`     | Success message + which fields changed                        |
+
+If every tool just serialized `WorkItemData` directly, every response would dump all 13+ fields
+even when only 5 are needed — bloating the response and burying the signal. By centralizing
+shaping in `WorkItemViewModels.cs`, changing what "full detail" means is a one-place edit that
+every tool using `Full()` picks up automatically.
+
+The name borrows from the MVVM pattern (Model–View–ViewModel): `WorkItemData` is the **Model**
+(the raw truth), the JSON payload is the **View** (what the consumer sees), and
+`WorkItemViewModels` is the **ViewModel** (the adapter shaping one into the other).
+
+### Adding a new tool — concrete walkthrough
+
+Say you want to add **`DeleteWorkItem`**. Here's every file you'd touch:
+
+**1. Add the method to `IWorkItemStore.cs`**
+```csharp
+void Delete(int id);
+```
+
+**2. Implement it in both stores**
+
+`MockWorkItemStore.cs`:
+```csharp
+public void Delete(int id)
+{
+    lock (_lock)
+    {
+        if (!_items.Remove(id))
+            throw new KeyNotFoundException($"Work item #{id} does not exist in the mock store.");
+    }
+}
+```
+
+`TfsWorkItemStore.cs`:
+```csharp
+public void Delete(int id)
+{
+    var store = _factory.GetWorkItemStore();
+    var wi = store.GetWorkItem(id);
+    wi.State = "Removed"; // TFS work items aren't hard-deleted, typically
+    wi.Save();
+}
+```
+
+**3. Add a response shape to `WorkItemViewModels.cs`**
+```csharp
+public static object Deleted(int id) => new
+{
+    success = true,
+    id,
+    message = $"Work item #{id} deleted successfully."
+};
+```
+
+**4. Add the tool method to `WorkItemTools.cs`**
+```csharp
+[McpServerTool, Description("Delete (or remove) a work item by ID.")]
+public static string DeleteWorkItem(
+    [Description("The numeric ID of the work item to delete.")]
+    int id)
+{
+    Store.Delete(id);
+    return JsonSerializer.Serialize(WorkItemViewModels.Deleted(id), JsonOptions.Default);
+}
+```
+
+**5. Write a test in `tests/`**
+A new `MockWorkItemStoreDeleteTests.cs` following the same pattern as the existing ones.
+
+That's it — **5 small, mechanical edits, no architecture decisions.** `Program.cs`,
+`ServiceLocator.cs`, and the `.csproj` never need to change for a new *work item* tool, because
+the wiring is already generic.
+
+**The one rule that makes this easy:** every tool follows the same shape —
+`[Description] → Store.Method() → ViewModel.Shape() → Serialize`. If you ever find yourself
+writing business logic *inside* `WorkItemTools.cs` — a loop, an `if` deciding how to format a
+date, direct TFS API calls — that's the signal you've broken the pattern. Push it down into the
+store (if it's "how do we get the data") or the view model (if it's "how do we present the
+data").
+
+### Adding a whole new TFS area (not just a new operation)
+
+If you're adding tools for a different TFS area entirely — Builds, Source Control, Test Plans —
+mirror the same 4 layers with new names:
+
+```
+IBuildStore.cs         (the contract)
+MockBuildStore.cs       (fake implementation)
+TfsBuildStore.cs        (real implementation)
+BuildViewModels.cs       (response shaping)
+BuildTools.cs           (the [McpServerTool] methods)
+```
+
+Then one line in `ServiceLocator.cs` to wire up which `IBuildStore` to use — same pattern as
+`WorkItemStore`, just a sibling property. `Program.cs` doesn't need to change at all, because
+`WithToolsFromAssembly()` auto-discovers any class with `[McpServerToolType]`.
