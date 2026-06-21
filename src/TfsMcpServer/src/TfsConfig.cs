@@ -33,7 +33,10 @@ public sealed class TfsConfig
         if (string.IsNullOrWhiteSpace(raw))
             return AuthMode.Ntlm;
 
-        if (Enum.TryParse<AuthMode>(raw, ignoreCase: true, out var mode))
+        // Enum.TryParse accepts numeric strings too (e.g. "123" → (AuthMode)123),
+        // even when no member has that value. Enum.IsDefined rejects those so a
+        // typo like a stray digit fails loudly instead of becoming a bogus AuthMode.
+        if (Enum.TryParse<AuthMode>(raw, ignoreCase: true, out var mode) && Enum.IsDefined(mode))
             return mode;
 
         var valid = string.Join(", ", Enum.GetNames<AuthMode>().Select(n => n.ToLowerInvariant()));

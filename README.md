@@ -61,9 +61,12 @@ cd TfsMcpServer
 dotnet test
 ```
 
-The test project always builds the main project in `MockOnly` mode (set automatically via
-`<MockOnly>true</MockOnly>` in `TfsMcpServer.Tests.csproj`), so tests run on **any OS** — no
-TFS assemblies, no Windows, no live TFS instance required.
+The test project always builds the main project in `MockOnly` mode, so tests run on **any OS** —
+no TFS assemblies, no Windows, no live TFS instance required. This is forwarded automatically via
+`<AdditionalProperties>MockOnly=true</AdditionalProperties>` on the `<ProjectReference>` inside
+`TfsMcpServer.Tests.csproj`. (A plain `<MockOnly>true</MockOnly>` property in the test project
+would *not* be enough — MSBuild properties don't cross a project reference on their own;
+`AdditionalProperties` is what actually passes the flag into the referenced project's build.)
 
 **Coverage:** ~40 tests across:
 - `MockWorkItemStore` — Query (WIQL filter parsing, ordering, paging), GetById, Create, Update, ListWorkItemTypes
@@ -233,6 +236,7 @@ All components log through `ILogger<T>` (standard `Microsoft.Extensions.Logging`
 | Tool call times out | Increase Network Timeout in PostQode's MCP server config panel |
 | `Permission Errors` in real TFS mode | Verify `TFS_USERNAME` / `TFS_PASSWORD` or check NTLM domain membership |
 | `dotnet test` fails to restore | Confirm SDK `10.0.100`+ is installed (see `global.json`) |
+| `dotnet test` fails with `CS0234: ... namespace 'Microsoft.TeamFoundation'` | The test project wasn't forwarding `MockOnly=true` to the main project's build — fixed via `<AdditionalProperties>MockOnly=true</AdditionalProperties>` on the `ProjectReference` in `TfsMcpServer.Tests.csproj`. If you still see this, confirm that line is present and re-run `dotnet restore` to refresh `obj/`. |
 
 ---
 

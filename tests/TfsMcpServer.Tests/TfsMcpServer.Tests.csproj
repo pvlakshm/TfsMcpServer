@@ -6,12 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-
-    <!--
-      Tests always build against the MockOnly version of the main project so they
-      run on any OS/CI agent without requiring TFS client assemblies or Windows.
-    -->
-    <MockOnly>true</MockOnly>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,7 +16,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\TfsMcpServer\TfsMcpServer.csproj" />
+    <ProjectReference Include="..\..\src\TfsMcpServer\TfsMcpServer.csproj">
+      <!--
+        ProjectReference does NOT automatically forward MSBuild properties to the
+        referenced project — setting <MockOnly>true</MockOnly> above only applies
+        to this test project's own build. AdditionalProperties explicitly passes
+        MockOnly=true into TfsMcpServer.csproj's build, so it excludes
+        TfsConnectionFactory.cs / TfsWorkItemStore.cs and skips the TFS NuGet
+        package, exactly like running `dotnet build -p:MockOnly=true` by hand.
+      -->
+      <AdditionalProperties>MockOnly=true</AdditionalProperties>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

@@ -116,6 +116,8 @@ public sealed class MockWorkItemStore : IWorkItemStore
             if (!_items.TryGetValue(id, out var wi))
                 throw new KeyNotFoundException($"Work item #{id} does not exist in the mock store.");
 
+            var customFields = new Dictionary<string, object?>();
+
             foreach (var (key, value) in fields)
             {
                 var strVal = value?.ToString() ?? "";
@@ -132,8 +134,9 @@ public sealed class MockWorkItemStore : IWorkItemStore
                         if (int.TryParse(strVal, out var p)) wi.Priority = p;
                         break;
                     default:
-                        // Store in the generic fields bag
-                        wi.Fields[key] = value;
+                        // Not one of the known properties — preserve as-is so it
+                        // survives the BuildFields() refresh below.
+                        customFields[key] = value;
                         break;
                 }
             }
@@ -143,7 +146,14 @@ public sealed class MockWorkItemStore : IWorkItemStore
 
             wi.ChangedBy = "MockUser";
             wi.ChangedDate = DateTime.UtcNow;
-            wi.Fields = BuildFields(wi); // refresh fields bag
+
+            // BuildFields() regenerates the standard System.*/Microsoft.VSTS.* keys from
+            // the properties just updated above. Merge any custom (non-standard) field
+            // names back in afterward so they aren't dropped.
+            wi.Fields = BuildFields(wi);
+            foreach (var (key, value) in customFields)
+                wi.Fields[key] = value;
+
             return wi;
         }
     }
