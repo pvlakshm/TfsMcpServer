@@ -65,6 +65,47 @@ public class WorkItemViewModelsTests
     }
 
     [Fact]
+    public void Created_WithNoParent_MessageOmitsParentMention()
+    {
+        var view = WorkItemViewModels.Created(SampleWorkItem()); // ParentId is null by default
+        var json = JsonSerializer.Serialize(view);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.DoesNotContain("child of", doc.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public void Created_WithParent_MessageMentionsParentAndIncludesParentId()
+    {
+        var wi = SampleWorkItem();
+        wi.ParentId = 7;
+
+        var view = WorkItemViewModels.Created(wi);
+        var json = JsonSerializer.Serialize(view);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Contains("child of #7", doc.RootElement.GetProperty("message").GetString());
+        Assert.Equal(7, doc.RootElement.GetProperty("parentId").GetInt32());
+    }
+
+    [Fact]
+    public void Full_IncludesParentIdAndChildIds()
+    {
+        var wi = SampleWorkItem();
+        wi.ParentId = 7;
+        wi.ChildIds = [101, 102];
+
+        var view = WorkItemViewModels.Full(wi);
+        var json = JsonSerializer.Serialize(view);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal(7, doc.RootElement.GetProperty("ParentId").GetInt32());
+        var childIds = doc.RootElement.GetProperty("ChildIds").EnumerateArray()
+            .Select(e => e.GetInt32()).ToArray();
+        Assert.Equal([101, 102], childIds);
+    }
+
+    [Fact]
     public void Updated_IncludesUpdatedFieldNames()
     {
         var view = WorkItemViewModels.Updated(SampleWorkItem(), new[] { "System.State", "System.AssignedTo" });

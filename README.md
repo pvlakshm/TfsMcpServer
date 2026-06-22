@@ -58,11 +58,9 @@ The test project always builds the main project in `MockOnly` mode, so tests run
 
 ---
 
-## Quick Start — Mock Mode (no TFS required)
+## Quick Start - Mock Mode (no TFS required)
 
-### 1. Build options
-
-**Option B - publish first (faster cold start):**
+### 1. Build and publish
 
 ```bash
 cd TfsMcpServer/src/TfsMcpServer
@@ -127,7 +125,7 @@ Try these prompts:
 | 9  | AdventureWorks | Product Backlog Item| Implement product search with filters          | New         | Eve Martinez   |
 | 10 | AdventureWorks | Task                | Set up CI pipeline in TFS Build                | Done        | Dave Lee       |
 
-The mock supports WIQL filtering by `[System.TeamProject]`, `[System.WorkItemType]`,`[System.State]` (= and <>), and `[System.AssignedTo]`, plus `ORDER BY [System.Id] ASC/DESC`.
+The mock supports WIQL filtering by `[System.TeamProject]`, `[System.WorkItemType]`, `[System.State]` (= and <>), and `[System.AssignedTo]`, plus `ORDER BY [System.Id] ASC/DESC`.
 
 ---
 
@@ -135,15 +133,14 @@ The mock supports WIQL filtering by `[System.TeamProject]`, `[System.WorkItemTyp
 
 The TFS client assemblies are installed automatically via NuGet — no manual DLL copying required.
 
-### 1. Build for production
+### 1. Build and publish for production
 
 ```bash
 cd TfsMcpServer/src/TfsMcpServer
 dotnet publish -c Release -o ../../publish
 ```
 
-This restores `Microsoft.TeamFoundationServer.ExtendedClient` from NuGet and produces a
-Windows-only (`win-x64`) executable.
+This restores `Microsoft.TeamFoundationServer.ExtendedClient` from NuGet and produces a Windows-only (`win-x64`) executable.
 
 ### 2. Update PostQode config
 
@@ -165,15 +162,13 @@ Windows-only (`win-x64`) executable.
 ### Auth modes
 
 | `TFS_AUTH_MODE` | Enum value      | When to use                              | Extra env vars needed              |
-|-----------------|-----------------|-------------------------------------------|-------------------------------------|
+|-----------------|-----------------|------------------------------------------|------------------------------------|
 | `mock`          | `AuthMode.Mock` | Testing without TFS                      | None                               |
 | `ntlm`          | `AuthMode.Ntlm` | Domain-joined Windows machine (default)  | Just `TFS_COLLECTION_URL`          |
 | `basic`         | `AuthMode.Basic`| Non-domain machine, explicit credentials | + `TFS_USERNAME`, `TFS_PASSWORD`   |
 | `pat`           | `AuthMode.Pat`  | TFS 2013 Update 5+ / TFS Service         | + `TFS_PASSWORD` (token only)      |
 
-Values are parsed case-insensitively. An unrecognised value (e.g. a typo like `nmtl`) fails
-immediately at startup with a clear error listing the valid options, rather than failing later
-inside the TFS connection logic.
+Values are parsed case-insensitively. An unrecognised value (e.g. a typo like `nmtl`) fails immediately at startup with a clear error listing the valid options, rather than failing later inside the TFS connection logic.
 
 ---
 
@@ -186,48 +181,55 @@ All components log through `ILogger<T>` (standard `Microsoft.Extensions.Logging`
 
 ---
 
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `NU1701` compatibility warning for TFS packages | `Microsoft.TeamFoundationServer.ExtendedClient` and its dependencies target `.NETFramework` and have no `net10.0` build - permanent and expected for the frozen TFS 2013 Client OM. The `win-x64` RuntimeIdentifier handles actual runtime compatibility via Windows shims. Accepted as-is; not a sign of a real incompatibility for Work Item CRUD usage. |
+| `NU1902`/`NU1903` vulnerability warnings for `Newtonsoft.Json` and `System.IdentityModel.Tokens.Jwt` | These are transitive dependencies locked inside `Microsoft.TeamFoundationServer.ExtendedClient 15.112.1`, a frozen package Microsoft stopped updating when TFS became Azure DevOps. They cannot be resolved without either (a) overriding the versions directly in the `.csproj` (try this first - see the comment in the file) or (b) replacing the TFS Client OM with direct TFS REST API calls. Neither code path is exercised by Work Item CRUD, so the risk is accepted for now. |
+
+---
+
 ## Architecture - How This Works
 
 Think of the server as **4 layers**. A tool call from PostQode flows down through them, and the response flows back up.
 
 ```
-                PostQode (the caller)
-                        |
-                        | calls a tool
+                    PostQode
+                        │ calls a tool
                         v
-+-----------------------+------------------------------------+
-│ Layer 1 - WorkItemTools.cs  (the menu)                     │
-│ Each [McpServerTool] method: validate input -> call the    │
-│ store -> shape via a view model -> serialize. Nothing else.│
-+-----------------------+------------------------------------+
-                        |
++----------------------------------------------------------+
+│ Layer 1 - WorkItemTools.cs  (the menu)                   │
+│ Each [McpServerTool] method: validate input → call the   │
+│ store → shape via a view model → serialize. Nothing else.│
++-----------------------+----------------------------------+
+                        │
                         v
 +-----------------------+----------------------------------+
 │ Layer 2 - IWorkItemStore  (the contract)                 │
 │ Declares what operations exist: Query, GetById, Create,  │
 │ Update, ListWorkItemTypes. Says nothing about *how*.     │
-+---------+------------------------------+-----------------+
-          │                              │
-          v                              v
-  +-------+----------------+   +---------+---------------+
-  │ MockWorkItemStore      │   │ TfsWorkItemStore        │
-  │ Layer 3a - in-memory,  │   │ Layer 3b - real TFS,    │
-  │ for testing            │   │ via the TFS client SDK  │
-  +-------+----------------+   +---------+---------------+
-          │                              │
-          +-------------+----------------+
-                        |
-                        v
-                both return the same
-                WorkItemData shape
-                        │
-                        v
-+-----------------------+---------------------------------+
-│ WorkItemViewModels  (the formatter)                     │
-│ Shapes WorkItemData into the JSON response - a brief    │
-│ summary for lists, a full dump for single lookups, a    │
-│ success message for creates/updates.                    │
-+-----------------------+---------------------------------+
++----------------------------------------------------------+
+        │                              │
+        v                              v
++-----------------------+   +---------------------------+
+│ MockWorkItemStore     │   │ TfsWorkItemStore          │
+│ Layer 3a - in-memory, │   │ Layer 3b - real TFS, via  │
+│ for testing           │   │ the TFS client SDK        │
++-----------------------+   +---------------------------+
+        │                              │
+        +------------------------------+
+                       v
+              both return the same
+              WorkItemData shape
+                       │
+                       v
++-----------------------------------------------------------+
+│ WorkItemViewModels  (the formatter)                       │
+│ Shapes WorkItemData into the JSON response - a brief      │
+│ summary for lists, a full dump for single lookups, a      │
+│ success message for creates/updates.                      │
++-----------------------------------------------------------+
                         │
                         v
           JSON string returned to PostQode
@@ -236,12 +238,14 @@ Think of the server as **4 layers**. A tool call from PostQode flows down throug
 ### The 4 layers
 
 **Layer 1 - `WorkItemTools.cs` (the menu)**
-This is what PostQode sees. Each method tagged `[McpServerTool]` is one callable action -`QueryWorkItems`, `CreateWorkItem`, etc. These methods are deliberately dumb: take input -> call the store -> hand the result to a view model -> return JSON. No business logic lives here.
+This is what PostQode sees. Each method tagged `[McpServerTool]` is one callable action - `QueryWorkItems`, `CreateWorkItem`, etc. These methods are deliberately dumb: take input → call
+the store → hand the result to a view model → return JSON. No business logic lives here.
 
-**Layer 2 - `IWorkItemStore` (the contract)**
-This interface says "any work item store must support Query, GetById, Create, Update, ListWorkItemTypes" - without saying *how*. It's the seam that lets mock and real TFS be swappable.
+**Layer 2 — `IWorkItemStore` (the contract)**
+This interface says "any work item store must support Query, GetById, Create, Update, ListWorkItemTypes" — without saying *how*. It's the seam that lets mock and real TFS be
+swappable.
 
-**Layer 3 - `MockWorkItemStore` / `TfsWorkItemStore` (the actual work)**
+**Layer 3 — `MockWorkItemStore` / `TfsWorkItemStore` (the actual work)**
 Two different engines that both fulfill the `IWorkItemStore` contract. One fakes data in memory; the other talks to real TFS. `ServiceLocator` picks one at startup based on `TFS_AUTH_MODE`.
 
 **Back up to `WorkItemViewModels` (the formatter)**
@@ -249,18 +253,20 @@ Once you have a `WorkItemData` result, this decides what JSON shape goes back to
 
 ### Why ViewModel?
 
-The ViewModel is **a translator between "the data we have" and "the shape someone else needs to see."** In this project: `WorkItemData` is the *full*, internal representation of a work item (every field). The JSON response is what PostQode actually receives. `WorkItemViewModels` sits between them and decides, for each tool, which fields matter and how they should be labeled.
+The ViewModel is **a translator between "the data we have" and "the shape someone else needs to see."** In this project: `WorkItemData` is the *full*, internal representation of a work item
+(every field). The JSON response is what PostQode actually receives. `WorkItemViewModels` sits between them and decides, for each tool, which fields matter and how they should be labeled.
 
 Different tools need different views of the same data:
 
 | Tool                 | What it needs to show                                         |
 |----------------------|---------------------------------------------------------------|
-| `QueryWorkItems`     | Just enough to scan a list - id, title, state, assignee       |
-| `GetWorkItem`        | Everything - full description, history, all custom fields     |
-| `CreateWorkItem`     | Not the item at all - just a success message + new ID         |
+| `QueryWorkItems`     | Just enough to scan a list — id, title, state, assignee       |
+| `GetWorkItem`        | Everything — full description, history, all custom fields     |
+| `CreateWorkItem`     | Not the item at all — just a success message + new ID         |
 | `UpdateWorkItem`     | Success message + which fields changed                        |
 
-If every tool just serialized `WorkItemData` directly, every response would dump all 13+ fields even when only 5 are needed - bloating the response and burying the signal. By centralizing shaping in `WorkItemViewModels.cs`, changing what "full detail" means is a one-place edit that every tool using `Full()` picks up automatically.
+If every tool just serialized `WorkItemData` directly, every response would dump all 13+ fields even when only 5 are needed — bloating the response and burying the signal. By centralizing
+shaping in `WorkItemViewModels.cs`, changing what "full detail" means is a one-place edit that every tool using `Full()` picks up automatically.
 
 ### Adding a new tool - concrete walkthrough
 
@@ -335,4 +341,5 @@ BuildViewModels.cs     (response shaping)
 BuildTools.cs          (the [McpServerTool] methods)
 ```
 
-Then one line in `ServiceLocator.cs` to wire up which `IBuildStore` to use — same pattern as `WorkItemStore`, just a sibling property. `Program.cs` doesn't need to change at all, because `WithToolsFromAssembly()` auto-discovers any class with `[McpServerToolType]`.
+Then one line in `ServiceLocator.cs` to wire up which `IBuildStore` to use — same pattern as `WorkItemStore`, just a sibling property. `Program.cs` doesn't need to change at all, because
+`WithToolsFromAssembly()` auto-discovers any class with `[McpServerToolType]`.

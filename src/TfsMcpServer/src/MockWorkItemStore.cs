@@ -82,6 +82,16 @@ public sealed class MockWorkItemStore : IWorkItemStore
 
         lock (_lock)
         {
+            // Validate the parent exists (and isn't 0 — treated as "no parent") before
+            // creating anything, so we never end up with a dangling/invalid link.
+            WorkItemData? parent = null;
+            if (req.ParentId is int parentId and not 0)
+            {
+                if (!_items.TryGetValue(parentId, out parent))
+                    throw new ArgumentException(
+                        $"Parent work item #{parentId} does not exist in the mock store.");
+            }
+
             var now = DateTime.UtcNow;
             var id = _nextId++;
 
@@ -99,12 +109,19 @@ public sealed class MockWorkItemStore : IWorkItemStore
                 ChangedDate = now,
                 Description = req.Description,
                 Priority = req.Priority > 0 ? req.Priority : 2,
-                Url = $"http://mock-tfs/tfs/{req.Project}/_workitems/edit/{id}"
+                Url = $"http://mock-tfs/tfs/{req.Project}/_workitems/edit/{id}",
+                ParentId = parent?.Id
             };
 
             wi.Fields = BuildFields(wi);
             _items[id] = wi;
-            _logger?.LogInformation("[mock] Created work item #{Id} in {Project}", id, req.Project);
+
+            // Maintain the inverse link on the parent.
+            parent?.ChildIds.Add(id);
+
+            _logger?.LogInformation(
+                "[mock] Created work item #{Id} in {Project}{ParentInfo}",
+                id, req.Project, parent is null ? "" : $" (child of #{parent.Id})");
             return wi;
         }
     }

@@ -20,5 +20,12 @@ public sealed class WorkItemData
     public string History { get; set; } = "";
     public int Priority { get; set; } = 2;
     public string Url { get; set; } = "";
+
+    /// <summary>ID of the parent work item, if one is linked. Null if this item has no parent.</summary>
+    public int? ParentId { get; set; }
+
+    /// <summary>IDs of child work items linked to this one. Empty if none.</summary>
+    public List<int> ChildIds { get; set; } = [];
+
     public Dictionary<string, object?> Fields { get; set; } = [];
 }

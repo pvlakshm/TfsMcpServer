@@ -57,7 +57,9 @@ public static class WorkItemTools
     [McpServerTool, Description(
         "Create a new work item. Returns the new ID and a summary. " +
         "Mock projects: 'FabrikamFiber' (types: Bug, Task, User Story, Feature, Epic, Test Case), " +
-        "'AdventureWorks' (types: Bug, Task, Product Backlog Item, Feature, Impediment).")]
+        "'AdventureWorks' (types: Bug, Task, Product Backlog Item, Feature, Impediment). " +
+        "Pass parentId to link this item as a child of an existing work item " +
+        "(e.g. a User Story under a Feature, or a Task under a User Story).")]
     public static string CreateWorkItem(
         [Description("Project name, e.g. 'FabrikamFiber'.")]
         string project,
@@ -72,7 +74,11 @@ public static class WorkItemTools
         [Description("Optional initial state. Defaults to the type's initial state.")]
         string state = "",
         [Description("Optional priority 1–4.")]
-        int priority = 2)
+        int priority = 2,
+        [Description(
+            "Optional ID of an existing work item to set as the parent, e.g. a Feature's " +
+            "ID when creating a child User Story. Omit or pass 0 for no parent.")]
+        int parentId = 0)
     {
         var wi = Store.Create(new CreateWorkItemRequest
         {
@@ -82,7 +88,8 @@ public static class WorkItemTools
             Description  = description,
             AssignedTo   = assignedTo,
             State        = state,
-            Priority     = priority
+            Priority     = priority,
+            ParentId     = parentId == 0 ? null : parentId
         });
 
         return JsonSerializer.Serialize(WorkItemViewModels.Created(wi), JsonOptions.Default);

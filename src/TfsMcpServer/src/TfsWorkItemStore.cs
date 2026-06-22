@@ -47,8 +47,9 @@ public sealed class TfsWorkItemStore : IWorkItemStore
     public WorkItemData Create(CreateWorkItemRequest req)
     {
         _logger.LogInformation(
-            "Creating {WorkItemType} '{Title}' in project {Project}",
-            req.WorkItemType, req.Title, req.Project);
+            "Creating {WorkItemType} '{Title}' in project {Project}{ParentInfo}",
+            req.WorkItemType, req.Title, req.Project,
+            req.ParentId is int p and not 0 ? $" (child of #{p})" : "");
 
         var store = _factory.GetWorkItemStore();
 
@@ -65,6 +66,17 @@ public sealed class TfsWorkItemStore : IWorkItemStore
         if (!string.IsNullOrWhiteSpace(req.AssignedTo))  wi.Fields[CoreField.AssignedTo].Value = req.AssignedTo;
         if (!string.IsNullOrWhiteSpace(req.State))       wi.State = req.State;
         if (req.Priority > 0 && wi.Fields.Contains("Priority")) wi.Fields["Priority"].Value = req.Priority;
+
+        if (req.ParentId is int parentId and not 0)
+        {
+            // Fetch the parent first so an invalid ID fails before we save anything.
+            var parent = store.GetWorkItem(parentId);
+
+            // "System.LinkTypes.Hierarchy" is the built-in Parent/Child link type in TFS.
+            // ReverseEnd on the new item's side means "the other end (target) is my parent".
+            var hierarchyLinkType = store.WorkItemLinkTypes[CoreLinkTypeReferenceNames.Hierarchy];
+            wi.WorkItemLinks.Add(new WorkItemLink(hierarchyLinkType.ReverseEnd, parent.Id));
+        }
 
         ValidateOrThrow(wi);
         wi.Save();
@@ -114,6 +126,23 @@ public sealed class TfsWorkItemStore : IWorkItemStore
         var allFields = new Dictionary<string, object?>();
         foreach (Field f in wi.Fields) allFields[f.ReferenceName] = f.Value;
 
+        int? parentId = null;
+        var childIds = new List<int>();
+
+        // Compare against the well-known "Parent"/"Child" link-type ends rather than the
+        // lower-level IsForwardLink flag — this matches the documented TFS API pattern for
+        // distinguishing hierarchy direction and is less likely to break across TFS versions.
+        var parentEnd = wi.Store.WorkItemLinkTypes.LinkTypeEnds["Parent"];
+        var childEnd  = wi.Store.WorkItemLinkTypes.LinkTypeEnds["Child"];
+
+        foreach (WorkItemLink link in wi.WorkItemLinks)
+        {
+            if (link.LinkTypeEnd.Id == parentEnd.Id)
+                parentId = link.TargetId;
+            else if (link.LinkTypeEnd.Id == childEnd.Id)
+                childIds.Add(link.TargetId);
+        }
+
         return new WorkItemData
         {
             Id          = wi.Id,
@@ -134,6 +163,8 @@ public sealed class TfsWorkItemStore : IWorkItemStore
                             ? Convert.ToInt32(wi.Fields["Priority"].Value)
                             : 0,
             Url         = wi.Uri.ToString(),
+            ParentId    = parentId,
+            ChildIds    = childIds,
             Fields      = allFields
         };
     }

@@ -35,6 +35,8 @@ public static class WorkItemViewModels
         wi.History,
         wi.Priority,
         wi.Url,
+        wi.ParentId,
+        wi.ChildIds,
         wi.Fields
     };
 
@@ -43,8 +45,11 @@ public static class WorkItemViewModels
     {
         success = true,
         id = wi.Id,
+        parentId = wi.ParentId,
         url = wi.Url,
-        message = $"Work item #{wi.Id} '{wi.Title}' created successfully."
+        message = wi.ParentId is int p
+            ? $"Work item #{wi.Id} '{wi.Title}' created successfully as a child of #{p}."
+            : $"Work item #{wi.Id} '{wi.Title}' created successfully."
     };
 
     /// <summary>Response returned after a successful update.</summary>
