@@ -73,8 +73,6 @@ Open PostQode -> MCP Servers icon -> Installed tab -> Configure MCP Servers.
 
 Add the following entry to `postqode_mcp_settings.json`:
 
-**Option B — published output (instant start):**
-
 ```json
 {
   "mcpServers": {
