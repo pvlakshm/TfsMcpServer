@@ -101,9 +101,9 @@ Try these prompts:
 ```
 "List work item types in FabrikamFiber"
 "Find all active bugs in FabrikamFiber"
-"Show me full details of work item #1"
+"Show me full details of work item #1  in FabrikamFiber"
 "Create a bug in FabrikamFiber titled 'Test the MCP server'"
-"Update work item #3 to Resolved and assign to Alice Johnson"
+"Update work item #3 in FabrikamFiber to Resolved and assign to Alice Johnson"
 ```
 
 ---
@@ -127,9 +127,9 @@ The mock supports WIQL filtering by `[System.TeamProject]`, `[System.WorkItemTyp
 
 ---
 
-## Production Mode — Real TFS 2013
+## Production Mode - Real TFS 2013
 
-The TFS client assemblies are installed automatically via NuGet — no manual DLL copying required.
+The TFS client assemblies are installed automatically via NuGet - no manual DLL copying required.
 
 ### 1. Build and publish for production
 
