@@ -101,7 +101,7 @@ Try these prompts:
 ```
 "List work item types in FabrikamFiber"
 "Find all active bugs in FabrikamFiber"
-"Show me full details of work item #1  in FabrikamFiber"
+"Show me full details of work item #1 in FabrikamFiber"
 "Create a bug in FabrikamFiber titled 'Test the MCP server'"
 "Update work item #3 in FabrikamFiber to Resolved and assign to Alice Johnson"
 ```
@@ -124,6 +124,10 @@ Try these prompts:
 | 10 | AdventureWorks | Task                | Set up CI pipeline in TFS Build                | Done        | Dave Lee       |
 
 The mock supports WIQL filtering by `[System.TeamProject]`, `[System.WorkItemType]`, `[System.State]` (= and <>), and `[System.AssignedTo]`, plus `ORDER BY [System.Id] ASC/DESC`.
+
+### NOTE
+In Mock-mode, the Url property on WorkItemData is never valid, never clickable, and http://mock-tfs doesn't resolve to anything. It exists because WorkItemData has a Url property (which is useful in real TFS 2013 - it gives you a direct browser link to the work item), and the mock just fills it in to satisfy the shape.
+
 
 ---
 
